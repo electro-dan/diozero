@@ -61,8 +61,8 @@ public class TM1637Test {
 			System.exit(2);
 		}
 
-		int sdaPin = Integer.parseInt(args[1]);
-		int clkPin = Integer.parseInt(args[2]);
+		int sdaPin = Integer.parseInt(args[0]);
+		int clkPin = Integer.parseInt(args[1]);
 		int maxDigits = Integer.parseInt(args[2]);
 
 		test(sdaPin, clkPin, maxDigits);
@@ -71,29 +71,54 @@ public class TM1637Test {
 	public static void test(int sdaPin, int clkPin, int maxDigits) {
 		try (TM1637 tm1637 = new TM1637(sdaPin, clkPin, maxDigits)) {
 			tm1637.init();
-			tm1637.test();
+			
+            Logger.info("Test");
+            tm1637.test();
 			SleepUtil.sleepSeconds(2);
-			tm1637.displayString("24Hr");
+            
+            Logger.info("Lower brightness");
+            tm1637.changeBrightness(1);
+			
+            Logger.info("Display text");
+            tm1637.displayString("24Hr");
 			SleepUtil.sleepSeconds(2);
+			
+            Logger.info("Display time 24H");
 			tm1637.displayTime(true, true);
 			SleepUtil.sleepSeconds(2);
+			
+            Logger.info("Display text");
 			tm1637.displayString("12Hr");
 			SleepUtil.sleepSeconds(2);
+			
+            Logger.info("Display time 12H");
 			tm1637.displayTime(false, true);
 			SleepUtil.sleepSeconds(2);
-			tm1637.displayString("Date");
+			
+            tm1637.displayString("Date");
 			SleepUtil.sleepSeconds(2);
-			tm1637.displayDate(true);
+			tm1637.displayDate(false); // UK format
 			SleepUtil.sleepSeconds(2);
-			tm1637.displayString("Int");
+			
+            Logger.info("Raise brightness");
+            tm1637.changeBrightness(7);
+
+            tm1637.displayString("Int");
 			SleepUtil.sleepSeconds(2);
 			tm1637.displayInteger(1637);
 			SleepUtil.sleepSeconds(2);
-			tm1637.displayString("-Int");
+			
+            tm1637.displayString("-Int");
 			SleepUtil.sleepSeconds(2);
 			tm1637.displayInteger(-33);
-			
 
+            Logger.info("Display off");
+			SleepUtil.sleepSeconds(2);
+			tm1637.displayOff();
+            
+            Logger.info("Display on");
+			SleepUtil.sleepSeconds(2);
+			tm1637.displayOn();
 		} catch (RuntimeIOException ioe) {
 			Logger.error(ioe, "Error: {}", ioe);
 		}

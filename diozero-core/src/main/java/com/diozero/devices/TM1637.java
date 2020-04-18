@@ -37,25 +37,50 @@ import com.diozero.util.RuntimeIOException;
 import com.diozero.util.SleepUtil;
 
 import java.nio.charset.StandardCharsets;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 
 import com.diozero.api.DigitalOutputDevice;
 
-/*
-https://github.com/Bogdanel/Raspberry-Pi-Python-3-TM1637-Clock/blob/master/tm1637.py
-https://github.com/depklyon/raspberrypi-python-tm1637/blob/master/tm1637.py
-https://github.com/rwbl/jTM1637
-*/
-
-public class TM1637 implements AutoCloseable {
+/**
+ * <p>Encapsulates the sort-of serial interface to the 4 or 6 digit 7-segment TM1637 LED display hardware (RobotDyn).
+ * Serial isn't I2C or SPI compliant, hence has to be bit-banged</p>
+ * 
+ * <p>Keypad not implemented</p>
+ * 
+ * <p>Wiring:</p>
+ * <pre>
+ * 5V  .... 5v
+ * GND .... Ground
+ * CLK .... Clock (GPIO)
+ * DIO .... Data (GPIO)
+ * </pre>
+ * 
+ * <p>
+ * Links
+ * </p>
+ * <ul>
+ * <li><a href=
+ * "https://www.mcielectronics.cl/website_MCI/static/documents/Datasheet_TM1637.pdf">Datasheet</a></li>
+ * <li><a href=
+ * "https://github.com/Bogdanel/Raspberry-Pi-Python-3-TM1637-Clock/blob/master/tm1637.py">Python
+ * code</a></li>
+ * <li><a href=
+ * "https://github.com/depklyon/raspberrypi-python-tm1637/blob/master/tm1637.py">More Python
+ * code</a></li>
+ * <li><a href=
+ * "http://www.ccsinfo.com/forum/viewtopic.php?p=57034">Conversion ASCII to 7 segment</a></li>
+ * </ul>
+ */
+ public class TM1637 implements AutoCloseable {
 	
 	// Used to output the segments from numbers
     final byte displayNumtoSeg[] = {0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f};
 	// Used to output the segments from ascii
 	// This table, taken from http://www.ccsinfo.com/forum/viewtopic.php?p=57034 is ideal for writing the converted character out
+    // The byte order has been inverted to make it compatible for TM1637
+    // Index starts at 0x20 / 32 in the ASCII table (location of space character)
 	final byte displayASCIItoSeg[] = {
 		0x00,	// ' '
 		0x00,	// '!', No seven-segment conversion for exclamation point
@@ -190,6 +215,21 @@ public class TM1637 implements AutoCloseable {
         clearDisplay();
     }
 
+    public void displayOff() {
+        // Write 0x40 [01000000] to indicate command to display data - [Write data to display register]
+        doStartCondition();
+        doByteWrite(bSetData);
+        doStopCondition();
+
+        doStartCondition();
+        doByteWrite((byte)(0x80));
+        doStopCondition();
+    }
+    
+    public void displayOn() {
+        changeBrightness(iBrightness);
+    }
+    
     public void clearDisplay() {
 		for (int i = 0; i < 6; i++)
 			bDigits[i] = (byte)0;
@@ -198,32 +238,30 @@ public class TM1637 implements AutoCloseable {
     
     // Displays the time
     public void displayTime(boolean is24, boolean showColon) {
-		String pattern = "Hmm";
-		if (!is24)
-			pattern = "hmm";
 		LocalDateTime now = LocalDateTime.now();
+        int iHour = now.getHour();
+        if ((!is24) && (iHour > 12))
+            iHour -= 12;
+        int iMinute = now.getMinute();
+        int iOut = (iHour * 100) + iMinute;
 
-		String sData = now.format(DateTimeFormatter.ofPattern(pattern));
-		if (now.getHour() < 10)
-			sData = " " + sData;
-		displayString(sData, true);
+		displayInteger(iOut, showColon);
 	}
 
 	public void displayDate(boolean isMonthFirst) {
-		displayDate(isMonthFirst, false);
+		displayDate(isMonthFirst, true);
 	}
 
 	// Displays the date
     public void displayDate(boolean isMonthFirst, boolean showColon) {
-		String pattern = "dM";
-		if (isMonthFirst)
-			pattern = "Md";
 		LocalDateTime now = LocalDateTime.now();
+        int iDay = now.getDayOfMonth();
+        int iMonth = now.getMonthValue();
+        int iOut = (iDay * 100) + iMonth;
+        if (isMonthFirst)
+            iOut = (iMonth * 100) + iDay;
 
-		String sData = now.format(DateTimeFormatter.ofPattern(pattern));
-		if (now.getDayOfMonth() < 10)
-			sData = " " + sData;
-		displayString(sData, true);
+		displayInteger(iOut, showColon);
 	}
 
 	// Display a string
@@ -241,29 +279,42 @@ public class TM1637 implements AutoCloseable {
 		if (sData.length() > maxDigits)
 			throw new RuntimeIOException("String is too long, cannot exceed " + maxDigits);
 		byte[] bData = sData.getBytes(StandardCharsets.US_ASCII);
+        Logger.info("Bytes " + Arrays.toString(bData));
 		for (int i = 0; i < maxDigits; i++) {
 			// Fill bDigits until the maxDigits, so if string is shorter, blank is written
-			if (i < bData.length)
-				bDigits[i] = (byte)(displayASCIItoSeg[bData[i]] + iPointAdd);
-			else
+			if (i < bData.length) {
+                byte[] bData1 = {bData[i]};
+				if (((bData[i] - 0x20) & 0xFF) < 114) {
+                    bDigits[i] = (byte)(displayASCIItoSeg[(bData[i] - 0x20) & 0xFF] + iPointAdd);
+                    Logger.info("Byte #" + i + " is '" + new String(bData1) + "'' " + bData[i]);
+                } else {
+                    bDigits[i] = (byte)(0 + iPointAdd);
+                    Logger.warn("Could not display byte " + bData[i]);
+                }
+            } else
 				bDigits[i] = (byte)(0 + iPointAdd);
 		}
         // Do the display
         updateDisplay();
 	}
-	
 	// Display 4 bytes of data, with or without colon
     public void displayInteger(int iNumber) {
-		int iMaxNumber = (10 ^ maxDigits) - 1;
-		int iMinNumber = (-10 ^ (maxDigits-1)) + 1;
+        displayInteger(iNumber, false);
+    }
+	
+	// Display 4 bytes of data, with or without colon
+    public void displayInteger(int iNumber, boolean showColon) {
+		int iMaxNumber = (int)((Math.pow(10, maxDigits)) - 1);
+		int iMinNumber = (int)((Math.pow(-10, maxDigits - 1)) + 1);
 		if ((iNumber > iMaxNumber) || (iNumber < iMinNumber))
 			throw new RuntimeIOException("Cannot display range beyond " + iMaxNumber + " to " + iMinNumber);
 
-		String format = "%" + ((10 ^ maxDigits)/10);
-		String sData = String.format(format, iNumber);
-			
+		// This format will left pad the number with spaces
+        String format = "%" + maxDigits + "d";
+        String sData = String.format(format, Integer.valueOf(iNumber));
+		
         // Do the display
-        displayString(sData, false);
+        displayString(sData, showColon);
     }
 
 	// Display 4 bytes of data, with or without colon
@@ -312,6 +363,9 @@ public class TM1637 implements AutoCloseable {
     }
 
     public void changeBrightness(int iBrightness) {
+		if ((iBrightness > 7) || (iBrightness < 0))
+			throw new RuntimeIOException("Brightness must be 0 to 7");
+        this.iBrightness = iBrightness;
         // Brightness - 0 is lowest, 7 is highest
         // 1/16  = 0 [000]
         // 2/16  = 1 [001]
@@ -321,6 +375,12 @@ public class TM1637 implements AutoCloseable {
         // 12/16 = 5 [101]
         // 13/16 = 6 [110]
         // 14/16 = 7 [111]
+
+        // Write 0x40 [01000000] to indicate command to display data - [Write data to display register]
+        doStartCondition();
+        doByteWrite(bSetData);
+        doStopCondition();
+
         doStartCondition();
         doByteWrite((byte)(0x88+iBrightness));
         doStopCondition();
