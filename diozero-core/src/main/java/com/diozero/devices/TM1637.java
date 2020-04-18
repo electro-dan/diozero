@@ -256,7 +256,7 @@ public class TM1637 implements AutoCloseable {
     public void displayInteger(int iNumber) {
 		int iMaxNumber = (10 ^ maxDigits) - 1;
 		int iMinNumber = (-10 ^ (maxDigits-1)) + 1;
-		if ((iNumber > iMaxNumber || (iNumber < iMinNumber))
+		if ((iNumber > iMaxNumber) || (iNumber < iMinNumber))
 			throw new RuntimeIOException("Cannot display range beyond " + iMaxNumber + " to " + iMinNumber);
 
 		String format = "%" + ((10 ^ maxDigits)/10);
