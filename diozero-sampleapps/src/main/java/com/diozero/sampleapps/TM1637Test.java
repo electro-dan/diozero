@@ -119,6 +119,11 @@ public class TM1637Test {
             Logger.info("Display on");
 			SleepUtil.sleepSeconds(2);
 			tm1637.displayOn();
+
+            tm1637.scrollString("Hi again", 500);
+            SleepUtil.sleepSeconds(2);
+            tm1637.displayOff();
+
 		} catch (RuntimeIOException ioe) {
 			Logger.error(ioe, "Error: {}", ioe);
 		}

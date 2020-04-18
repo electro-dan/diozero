@@ -269,6 +269,22 @@ import com.diozero.api.DigitalOutputDevice;
 		displayString(sData, false);
 	}
 	
+	// Display a string
+    public void scrollString(String sData, int iSpeedMilli) {
+        String sDataFull = sData;
+        String sDataOut = "";
+        // Suffix with spaces
+        for (int i = 0; i < maxDigits; i++)
+            sDataFull += " ";
+        int j = 0;
+        while (j <= sData.length()) {
+            sDataOut = sDataFull.substring(j, j + maxDigits);
+            displayString(sDataOut, false);
+            SleepUtil.sleepMillis(iSpeedMilli);
+            j++;
+        }
+	}
+	
 	// Display a string, with or without colon
     public void displayString(String sData, boolean showColon) {
         // If the colon is to be displayed, add 0x80 to every digit data
@@ -279,14 +295,12 @@ import com.diozero.api.DigitalOutputDevice;
 		if (sData.length() > maxDigits)
 			throw new RuntimeIOException("String is too long, cannot exceed " + maxDigits);
 		byte[] bData = sData.getBytes(StandardCharsets.US_ASCII);
-        Logger.info("Bytes " + Arrays.toString(bData));
 		for (int i = 0; i < maxDigits; i++) {
 			// Fill bDigits until the maxDigits, so if string is shorter, blank is written
 			if (i < bData.length) {
                 byte[] bData1 = {bData[i]};
 				if (((bData[i] - 0x20) & 0xFF) < 114) {
                     bDigits[i] = (byte)(displayASCIItoSeg[(bData[i] - 0x20) & 0xFF] + iPointAdd);
-                    Logger.info("Byte #" + i + " is '" + new String(bData1) + "'' " + bData[i]);
                 } else {
                     bDigits[i] = (byte)(0 + iPointAdd);
                     Logger.warn("Could not display byte " + bData[i]);
@@ -297,6 +311,7 @@ import com.diozero.api.DigitalOutputDevice;
         // Do the display
         updateDisplay();
 	}
+
 	// Display 4 bytes of data, with or without colon
     public void displayInteger(int iNumber) {
         displayInteger(iNumber, false);
