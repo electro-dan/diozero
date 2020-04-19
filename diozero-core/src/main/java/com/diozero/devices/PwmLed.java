@@ -61,6 +61,20 @@ public class PwmLed extends PwmOutputDevice {
 		super(gpio, initialValue);
 	}
 
+		/**
+	 * @param gpio
+	 *            The GPIO to which the LED is attached to.
+	 * @param pwmFrequency
+	 *            PWM frequency (Hz).
+	 * @param initialValue
+	 *            Initial PWM output value (range 0..1).
+	 * @throws RuntimeIOException
+	 *             If an I/O error occurred.
+	 */
+	public PwmLed(int gpio, int pwmFrequency, float initialValue) throws RuntimeIOException {
+		super(gpio, pwmFrequency, initialValue);
+	}
+
 	/**
 	 * @param deviceFactory
 	 *            Device factory to use to provision this device.
@@ -78,6 +92,23 @@ public class PwmLed extends PwmOutputDevice {
 	 *            Device factory to use to provision this device.
 	 * @param gpio
 	 *            The GPIO to which the LED is attached to.
+	 * @param pwmFrequency
+	 *            PWM frequency (Hz).
+	 * @param initialValue
+	 *            Initial PWM output value (range 0..1).
+	 * @throws RuntimeIOException
+	 *             If an I/O error occurred.
+	 */
+	public PwmLed(PwmOutputDeviceFactoryInterface deviceFactory, int gpio, int pwmFrequency, float initialValue)
+			throws RuntimeIOException {
+		super(deviceFactory, gpio, pwmFrequency, initialValue);
+	}
+
+	/**
+	 * @param deviceFactory
+	 *            Device factory to use to provision this device.
+	 * @param gpio
+	 *            The GPIO to which the LED is attached to.
 	 * @param initialValue
 	 *            Initial PWM output value (range 0..1).
 	 * @throws RuntimeIOException
@@ -87,8 +118,8 @@ public class PwmLed extends PwmOutputDevice {
 			throws RuntimeIOException {
 		super(deviceFactory, gpio, initialValue);
 	}
-
-	/**
+    
+    	/**
 	 * Blink the LED on and off indefinitely.
 	 * 
 	 * @throws RuntimeIOException

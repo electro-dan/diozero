@@ -41,47 +41,52 @@ import com.diozero.util.DeviceFactoryHelper;
 import com.diozero.util.RuntimeIOException;
 
 /**
- * Three pin controlled RGB LED.
+ * Four pin controlled RGB LED (i.e. 5050).
  */
-public class RgbPwmLed implements Closeable {
+public class WrgbPwmLed implements Closeable {
 	private PwmLed redLED;
 	private PwmLed greenLED;
 	private PwmLed blueLED;
+    private PwmLed whiteLED;
 	private static final int DEFAULT_PWM_FREQUENCY = 50;
 	
 	/**
 	 * @param redPin GPIO for the red LED.
 	 * @param greenPin GPIO for the green LED.
 	 * @param bluePin GPIO for the blue LED.
+	 * @param whitePin GPIO for the white LED.
 	 * @throws RuntimeIOException If an I/O error occurred.
 	 */
-	public RgbPwmLed(int redPin, int greenPin, int bluePin) throws RuntimeIOException {
-		this(DeviceFactoryHelper.getNativeDeviceFactory(), redPin, greenPin, bluePin, DEFAULT_PWM_FREQUENCY);
+	public WrgbPwmLed(int redPin, int greenPin, int bluePin, int whitePin) throws RuntimeIOException {
+		this(DeviceFactoryHelper.getNativeDeviceFactory(), redPin, greenPin, bluePin, whitePin, DEFAULT_PWM_FREQUENCY);
 	}
 	
 	/**
 	 * @param redPin GPIO for the red LED.
 	 * @param greenPin GPIO for the green LED.
 	 * @param bluePin GPIO for the blue LED.
-     * @param pwmFrequency PWM frequency (Hz).
+	 * @param whitePin GPIO for the white LED.
+	 * @param pwmFrequency PWM frequency (Hz).
 	 * @throws RuntimeIOException If an I/O error occurred.
 	 */
-	public RgbPwmLed(int redPin, int greenPin, int bluePin, int pwmFrequency) throws RuntimeIOException {
-		this(DeviceFactoryHelper.getNativeDeviceFactory(), redPin, greenPin, bluePin, pwmFrequency);
+	public WrgbPwmLed(int redPin, int greenPin, int bluePin, int whitePin, int pwmFrequency) throws RuntimeIOException {
+		this(DeviceFactoryHelper.getNativeDeviceFactory(), redPin, greenPin, bluePin, whitePin, pwmFrequency);
 	}
-	
+
 	/**
 	 * @param deviceFactory Device factory to use to provision this device.
 	 * @param redPin GPIO for the red LED.
 	 * @param greenPin GPIO for the green LED.
 	 * @param bluePin GPIO for the blue LED.
+	 * @param whitePin GPIO for the white LED.
 	 * @param pwmFrequency PWM frequency (Hz).
 	 * @throws RuntimeIOException If an I/O error occurred.
 	 */
-	public RgbPwmLed(PwmOutputDeviceFactoryInterface deviceFactory, int redPin, int greenPin, int bluePin, int pwmFrequency) throws RuntimeIOException {
+	public WrgbPwmLed(PwmOutputDeviceFactoryInterface deviceFactory, int redPin, int greenPin, int bluePin, int whitePin, int pwmFrequency) throws RuntimeIOException {
 		redLED = new PwmLed(deviceFactory, redPin, pwmFrequency, 0);
 		greenLED = new PwmLed(deviceFactory, greenPin, pwmFrequency, 0);
 		blueLED = new PwmLed(deviceFactory, bluePin, pwmFrequency, 0);
+        whiteLED = new PwmLed(deviceFactory, whitePin, pwmFrequency, 0);
 	}
 	
 	@Override
@@ -90,15 +95,16 @@ public class RgbPwmLed implements Closeable {
 		redLED.close();
 		greenLED.close();
 		blueLED.close();
+        whiteLED.close();
 	}
 	
 	/**
 	 * Get the value of all LEDs.
-	 * @return Boolean array (red, green, blue).
+	 * @return Boolean array (red, green, blue, white).
 	 * @throws RuntimeIOException If an I/O error occurred.
 	 */
 	public float[] getValues() throws RuntimeIOException {
-		return new float[] { redLED.getValue(), greenLED.getValue(), blueLED.getValue() };
+		return new float[] { redLED.getValue(), greenLED.getValue(), blueLED.getValue(), whiteLED.getValue() };
 	}
 	
 	/**
@@ -106,12 +112,14 @@ public class RgbPwmLed implements Closeable {
 	 * @param red Red LED value (0..1).
 	 * @param green Green LED value (0..1).
 	 * @param blue Blue LED value (0..1).
+	 * @param white White LED value (0..1).
 	 * @throws RuntimeIOException If an I/O error occurred.
 	 */
-	public void setValues(float red, float green, float blue) throws RuntimeIOException {
+	public void setValues(float red, float green, float blue, float white) throws RuntimeIOException {
 		redLED.setValue(red);
 		greenLED.setValue(green);
 		blueLED.setValue(blue);
+        whiteLED.setValue(white);
 	}
 	
 	/**
@@ -122,6 +130,7 @@ public class RgbPwmLed implements Closeable {
 		redLED.on();
 		greenLED.on();
 		blueLED.on();
+        whiteLED.on();
 	}
 	
 	/**
@@ -132,6 +141,7 @@ public class RgbPwmLed implements Closeable {
 		redLED.off();
 		greenLED.off();
 		blueLED.off();
+        whiteLED.off();
 	}
 	
 	/**
@@ -142,5 +152,6 @@ public class RgbPwmLed implements Closeable {
 		redLED.toggle();
 		greenLED.toggle();
 		blueLED.toggle();
+        whiteLED.toggle();
 	}
 }
