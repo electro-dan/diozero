@@ -38,10 +38,11 @@ import com.diozero.util.SleepUtil;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
 
 import com.diozero.api.DigitalOutputDevice;
+import com.diozero.api.GpioEventTrigger;
+import com.diozero.api.GpioPullUpDown;
+import com.diozero.api.WaitableDigitalInputDevice;
 
 /**
  * <p>Encapsulates the sort-of serial interface to the 4 or 6 digit 7-segment TM1637 LED display hardware (RobotDyn).
@@ -193,21 +194,35 @@ import com.diozero.api.DigitalOutputDevice;
 	// Number of digits available
 	int maxDigits = 4;
 	
+    private boolean doAckWait = false;
 	private DigitalOutputDevice clkOut;
     private DigitalOutputDevice sdaOut;
 
+	/**
+	 * @param sdaPin
+	 *            GPIO to which the DIO pin is connected
+	 * @param clkPin
+	 *            GPIO to which the CLK pin is connected
+	 * @param maxDigits
+	 *            The number of digits/displays on the TM1637 i.e. 4
+	 * @throws RuntimeIOException
+	 *             If an I/O error occurs.
+	 */
     public TM1637(int sdaPin, int clkPin, int maxDigits) {
         this.sdaPin = sdaPin;
 		this.clkPin = clkPin;
 		// Some displays are 4 digits, some are 6 digits
-		if ((maxDigits > 6) || (maxDigits < 0))
-			throw new RuntimeIOException("Maximum number of digits can only be 0 to 6");
+		if ((maxDigits > 6) || (maxDigits <= 1))
+			throw new RuntimeIOException("Maximum number of digits can only be 1 to 6");
 		this.maxDigits = maxDigits;
 
         clkOut = new DigitalOutputDevice(clkPin);
         sdaOut = new DigitalOutputDevice(sdaPin);
     }
 
+	/**
+	 * Initialise the display
+	 */
     public void init() {
         clkOut.on();
         sdaOut.on();
@@ -215,6 +230,9 @@ import com.diozero.api.DigitalOutputDevice;
         clearDisplay();
     }
 
+	/**
+	 * Switch off the display
+	 */
     public void displayOff() {
         // Write 0x40 [01000000] to indicate command to display data - [Write data to display register]
         doStartCondition();
@@ -226,18 +244,32 @@ import com.diozero.api.DigitalOutputDevice;
         doStopCondition();
     }
     
+	/**
+	 * Switch on the display (will display any characters that was previously written)
+	 */
     public void displayOn() {
         changeBrightness(iBrightness);
     }
     
+	/**
+	 * Clear the characters on the display
+	 */
     public void clearDisplay() {
 		for (int i = 0; i < 6; i++)
 			bDigits[i] = (byte)0;
         updateDisplay();
     }
     
-    // Displays the time
-    public void displayTime(boolean is24, boolean showColon) {
+
+	/**
+	 * Displays the time
+     * 
+     * @param is24
+	 *            If true, displays the time in 24 hr / military time format
+	 * @param showDotColon
+	 *            If true, the colon is displayed (useful for displays that have the colon connected)
+	 */
+    public void displayTime(boolean is24, boolean showDotColon) {
 		LocalDateTime now = LocalDateTime.now();
         int iHour = now.getHour();
         if ((!is24) && (iHour > 12))
@@ -245,31 +277,97 @@ import com.diozero.api.DigitalOutputDevice;
         int iMinute = now.getMinute();
         int iOut = (iHour * 100) + iMinute;
 
-		displayInteger(iOut, showColon);
+		displayInteger(iOut, showDotColon);
 	}
 
-	public void displayDate(boolean isMonthFirst) {
+	/**
+	 * Displays the date
+     * 
+     * @param isMonthFirst
+	 *            If true, displays the date in month first (i.e. American format)
+	 */
+    public void displayDate(boolean isMonthFirst) {
 		displayDate(isMonthFirst, true);
 	}
 
-	// Displays the date
-    public void displayDate(boolean isMonthFirst, boolean showColon) {
+	/**
+	 * Displays the date
+     * 
+     * @param isMonthFirst
+	 *            If true, displays the date in month first (i.e. American format)
+	 * @param showDotColon
+	 *            If true, the colon is displayed (useful for displays that have the colon connected)
+	 */
+    public void displayDate(boolean isMonthFirst, boolean showDotColon) {
 		LocalDateTime now = LocalDateTime.now();
         int iDay = now.getDayOfMonth();
         int iMonth = now.getMonthValue();
-        int iOut = (iDay * 100) + iMonth;
-        if (isMonthFirst)
-            iOut = (iMonth * 100) + iDay;
 
-		displayInteger(iOut, showColon);
+        String sData = iDay + "" + iMonth;
+        if (iDay < 10)
+            sData = " "+ sData;
+        if (isMonthFirst) {
+            sData = iMonth + "" + iDay;
+            if (iMonth < 10)
+                sData = " "+ sData;
+        }
+
+		displayString(sData, showDotColon);
 	}
 
-	// Display a string
+	/**
+	 * Display a string (limited ASCII only)
+     * 
+     * @param sData
+	 *            String of data to display, no longer than the number of digits on the display
+	 */
     public void displayString(String sData) {
 		displayString(sData, false);
 	}
 	
-	// Display a string
+	/**
+	 * Display a string (limited ASCII only), with or without colon/dots
+     * 
+     * @param sData
+	 *            String of data to display, no longer than the number of digits on the display
+	 * @param showDotColon
+	 *            If true, the colon is displayed (useful for displays that have the colon connected)
+	 */
+    public void displayString(String sData, boolean showDotColon) {
+        // If the dot/colon is to be displayed, add 0x80 to every digit data
+        // Dot/Colon - some displays will have a dot enabled per segment
+        // others will have a colon in the middle only (like a clock) - dots are not possible in this case
+        int iPointAdd = 0;
+        if (showDotColon)
+            iPointAdd = COLON;
+
+		if (sData.length() > maxDigits)
+			throw new RuntimeIOException("String is too long, cannot exceed " + maxDigits);
+		byte[] bData = sData.getBytes(StandardCharsets.US_ASCII);
+		for (int i = 0; i < maxDigits; i++) {
+			// Fill bDigits until the maxDigits, so if string is shorter, blank is written
+			if (i < bData.length) {
+				if ((((bData[i] - 32) & 0xFF) <= 90) || (bData[i] >= 32)) {
+                    bDigits[i] = (byte)(displayASCIItoSeg[(bData[i] - 32) & 0xFF] + iPointAdd);
+                } else {
+                    bDigits[i] = (byte)(0 + iPointAdd);
+                    Logger.warn("Could not display byte - outside of ASCII range 32 to 122 " + bData[i]);
+                }
+            } else
+				bDigits[i] = (byte)(0 + iPointAdd);
+		}
+        // Do the display
+        updateDisplay();
+	}
+
+	/**
+	 * Display a string scrolling (limited ASCII only), with or without colon/dots
+     * 
+     * @param sData
+	 *            String of data to display
+	 * @param iSpeedMilli
+	 *            Number of milliseconds to wait before scrolling to the next character. 500 to 1000 works nicely.
+	 */
     public void scrollString(String sData, int iSpeedMilli) {
         String sDataFull = sData;
         String sDataOut = "";
@@ -285,40 +383,25 @@ import com.diozero.api.DigitalOutputDevice;
         }
 	}
 	
-	// Display a string, with or without colon
-    public void displayString(String sData, boolean showColon) {
-        // If the colon is to be displayed, add 0x80 to every digit data
-        int iPointAdd = 0;
-        if (showColon)
-            iPointAdd = COLON;
-
-		if (sData.length() > maxDigits)
-			throw new RuntimeIOException("String is too long, cannot exceed " + maxDigits);
-		byte[] bData = sData.getBytes(StandardCharsets.US_ASCII);
-		for (int i = 0; i < maxDigits; i++) {
-			// Fill bDigits until the maxDigits, so if string is shorter, blank is written
-			if (i < bData.length) {
-                byte[] bData1 = {bData[i]};
-				if (((bData[i] - 0x20) & 0xFF) < 114) {
-                    bDigits[i] = (byte)(displayASCIItoSeg[(bData[i] - 0x20) & 0xFF] + iPointAdd);
-                } else {
-                    bDigits[i] = (byte)(0 + iPointAdd);
-                    Logger.warn("Could not display byte " + bData[i]);
-                }
-            } else
-				bDigits[i] = (byte)(0 + iPointAdd);
-		}
-        // Do the display
-        updateDisplay();
-	}
-
-	// Display 4 bytes of data, with or without colon
+	/**
+	 * Display an integer number (as long is it isn't longer than the display)
+     * 
+     * @param iNumber
+	 *            Integer number to display, no longer than the number of digits on the display
+	 */
     public void displayInteger(int iNumber) {
         displayInteger(iNumber, false);
     }
 	
-	// Display 4 bytes of data, with or without colon
-    public void displayInteger(int iNumber, boolean showColon) {
+	/**
+	 * Display an integer number (as long is it isn't longer than the display), with or without colon/dots
+     * 
+     * @param iNumber
+	 *            Integer number to display, no longer than the number of digits on the display
+	 * @param showDotColon
+	 *            If true, the colon is displayed (useful for displays that have the colon connected)
+	 */
+    public void displayInteger(int iNumber, boolean showDotColon) {
 		int iMaxNumber = (int)((Math.pow(10, maxDigits)) - 1);
 		int iMinNumber = (int)((Math.pow(-10, maxDigits - 1)) + 1);
 		if ((iNumber > iMaxNumber) || (iNumber < iMinNumber))
@@ -329,14 +412,23 @@ import com.diozero.api.DigitalOutputDevice;
         String sData = String.format(format, Integer.valueOf(iNumber));
 		
         // Do the display
-        displayString(sData, showColon);
+        displayString(sData, showDotColon);
     }
 
-	// Display 4 bytes of data, with or without colon
-    public void displayNumberDataSet(int iData[], boolean showColon) {
+	/**
+	 * Display 4 numbers of data, with or without colon. Each number can only be 0 to 9
+     * 
+     * @param iData[]
+	 *            Array of integer numbers to display, no longer than the number of digits on the display
+	 * @param showDotColon
+	 *            If true, the colon is displayed (useful for displays that have the colon connected)
+	 */
+    public void displayNumberDataSet(int iData[], boolean showDotColon) {
         // If the colon is to be displayed, add 0x80 to every digit data
+        // Dot/Colon - some displays will have a dot enabled per segment
+        // others will have a colon in the middle only (like a clock) - dots are not possible in this case
         int iPointAdd = 0;
-        if (showColon)
+        if (showDotColon)
             iPointAdd = COLON;
         
         // Loop through the max digits - validate first
@@ -347,21 +439,37 @@ import com.diozero.api.DigitalOutputDevice;
         // Loop through the max digits
         for (int i = 0; i < maxDigits; i++) {
 			// Set the internal byte array to the translated data
-            bDigits[i] = (byte)(displayNumtoSeg[iData[i]] + iPointAdd);
+            // If the bytes sent is shorter than the display, fill the remaining characters as empty
+            if (i < iData.length)
+                bDigits[i] = (byte)(displayNumtoSeg[iData[i]] + iPointAdd);
+            else
+                bDigits[i] = (byte)(0 + iPointAdd);
         }
         // Do the display
         updateDisplay();
     }
 
-    public void displayNumberDataDigit(int iDigit, int iData, boolean showColon) {
+	/**
+	 * Display 1 number of data, with or without colon, in a specific digit location. Number can only be 0 to 9
+     * 
+     * @param iDigit
+	 *            Digit to display on. 0 to maxDigits-1
+     * @param iData
+	 *            Integer number to display
+	 * @param showDotColon
+	 *            If true, the colon is displayed (useful for displays that have the colon connected)
+	 */
+    public void displayNumberDataDigit(int iDigit, int iData, boolean showDotColon) {
 		if ((iData > 9) || (iData < 0))
 			throw new RuntimeIOException("Number can only be 0 to 9");
-		if ((iDigit > maxDigits) || (iDigit < 0))
-			throw new RuntimeIOException("Digit can only be 0 to " + maxDigits);
+		if ((iDigit >= maxDigits) || (iDigit < 0))
+			throw new RuntimeIOException("Digit can only be 0 to " + (maxDigits-1));
 
 		// If the colon is to be displayed, add 0x80 to every digit data
+        // Dot/Colon - some displays will have a dot enabled per segment
+        // others will have a colon in the middle only (like a clock) - dots are not possible in this case
         int iPointAdd = 0;
-        if (showColon)
+        if (showDotColon)
             iPointAdd = COLON;
         
         // Set the internal byte array to the translated data
@@ -370,6 +478,9 @@ import com.diozero.api.DigitalOutputDevice;
         updateDisplay();
     }
 
+	/**
+	 * Simple test. Displays e.g. 0123 for 4 digit displays, 012345 for 6 digit displays
+     */
     public void test() {
         // displays 012345
 		for (int i = 0; i < maxDigits; i++)
@@ -377,6 +488,12 @@ import com.diozero.api.DigitalOutputDevice;
         updateDisplay();
     }
 
+	/**
+	 * Change the brightness of the display
+     * 
+     * @param iBrightness
+	 *            Brightness to change to, from 0 to 7
+     */
     public void changeBrightness(int iBrightness) {
 		if ((iBrightness > 7) || (iBrightness < 0))
 			throw new RuntimeIOException("Brightness must be 0 to 7");
@@ -401,8 +518,10 @@ import com.diozero.api.DigitalOutputDevice;
         doStopCondition();
     }
 
-    // Publish the internal bDigits to the display
-    public void updateDisplay() {
+	/**
+	 * Publish the internal bDigits to the display
+     */
+    private void updateDisplay() {
         // Write 0x40 [01000000] to indicate command to display data - [Write data to display register]
         doStartCondition();
         doByteWrite(bSetData);
@@ -421,21 +540,20 @@ import com.diozero.api.DigitalOutputDevice;
         doStopCondition();
     }
 
-    public void doStartCondition() {
+	/**
+	 * Send the start condition
+     */
+    private void doStartCondition() {
         clkOut.on();
         sdaOut.on();
         sdaOut.off();
         clkOut.off();
     }
 
-    public void doStopCondition() {
-        clkOut.off();
-        sdaOut.off();
-        clkOut.on();
-        sdaOut.on();
-    }
-
-    public void doByteWrite(byte bWrite) {
+	/**
+	 * Write one byte
+     */
+    private void doByteWrite(byte bWrite) {
         Logger.info("Sending " + Integer.toHexString(bWrite));
         for (int i = 0; i < 8; i++) {
             // Clock low
@@ -455,29 +573,43 @@ import com.diozero.api.DigitalOutputDevice;
 
         // Ack
         clkOut.off();
-        sdaOut.on();
-        // Close output
-        //sdaOut.close();
-        clkOut.on();
+        if (doAckWait) {
+            // NOTE: This currently does not appear to work, even with pullup resistor. SDA never goes false.
+            // Close output
+            sdaOut.close();
+            // Open an input to check for ACK
+            try (WaitableDigitalInputDevice input = new WaitableDigitalInputDevice(sdaPin, GpioPullUpDown.PULL_UP, GpioEventTrigger.BOTH)) {
 
-        // Open an input to check for ACK
-        /*try (WaitableDigitalInputDevice input = new WaitableDigitalInputDevice(sdaPin, GpioPullUpDown.PULL_UP, GpioEventTrigger.BOTH)) {
-            boolean notified = false;
-            while (!notified) {
-				Logger.info("Waiting for ACK");
-				notified = input.waitForValue(false, 20);
-				Logger.info("Timed out? " + !notified);
-			}
-		} catch (RuntimeIOException ioe) {
-			Logger.error(ioe, "Error: {}", ioe);
-		} catch (InterruptedException e) {
-			Logger.error(e, "Error: {}", e);
+                clkOut.on();
+
+                boolean notified = false;
+                while (!notified) {
+                	Logger.info("Waiting for ACK");
+                	notified = input.waitForValue(false, 20);
+                	Logger.info("Timed out? " + !notified);
+                }
+            } catch (RuntimeIOException ioe) {
+                Logger.error(ioe, "Error: {}", ioe);
+            } catch (InterruptedException e) {
+            	Logger.error(e, "Error: {}", e);
+            }
+
+            sdaOut = new DigitalOutputDevice(sdaPin);
+        } else {
+            clkOut.on();
+            // Sleeping 1ms is enough
+            SleepUtil.sleepMillis(1);
         }
-        sdaOut = new DigitalOutputDevice(sdaPin);*/
+    }
 
-        // Sleeping 1ms is enough
-        SleepUtil.sleepMillis(1);
+	/**
+	 * Send the stop condition
+     */
+    private void doStopCondition() {
+        clkOut.off();
         sdaOut.off();
+        clkOut.on();
+        sdaOut.on();
     }
 
 	@Override
