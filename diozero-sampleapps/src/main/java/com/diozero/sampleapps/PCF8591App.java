@@ -71,13 +71,13 @@ public class PCF8591App {
 			float[] v = new float[4];
 			boolean high = true;
 			while (true) {
-				if (high) {
+				/*if (high) {
 					adc.setValue(0, 1);
 					high = false;
 				} else {
 					adc.setValue(0, 0);
 					high = true;
-				}
+				}*/
 				for (int i=0; i<v.length; i++) {
 					v[i] = adc.getValue(i);
 				}

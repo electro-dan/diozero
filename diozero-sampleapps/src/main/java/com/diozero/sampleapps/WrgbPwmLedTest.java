@@ -39,26 +39,29 @@ import com.diozero.util.SleepUtil;
 
 public class WrgbPwmLedTest {
 	public static void main(String[] args) {
-		int red_pin, green_pin, blue_pin, white_pin;
-		if (args.length > 2) {
+		int red_pin, green_pin, blue_pin, white_pin, pwmhz;
+		if (args.length > 4) {
 			red_pin = Integer.parseInt(args[0]);
 			green_pin = Integer.parseInt(args[1]);
 			blue_pin = Integer.parseInt(args[2]);
             white_pin = Integer.parseInt(args[3]);
+            pwmhz = Integer.parseInt(args[4]);
+            
 		} else {
 			red_pin = 17;
 			blue_pin = 27;
 			green_pin = 22;
             white_pin = 23;
+            pwmhz = 500;
 		}
         // Fixed inverted green/blue pins
-		test(red_pin, green_pin, blue_pin, white_pin);
+		test(red_pin, green_pin, blue_pin, white_pin, pwmhz);
 	}
 	
-	private static void test(int redPin, int greenPin, int bluePin, int whitePin) {
+	private static void test(int redPin, int greenPin, int bluePin, int whitePin, int pwmhz) {
 		int delay = 500;
         // Changed init to allow max pwm frequency for pigpio
-		try (WrgbPwmLed led = new WrgbPwmLed(redPin, greenPin, bluePin, whitePin, 1000)) {
+		try (WrgbPwmLed led = new WrgbPwmLed(redPin, greenPin, bluePin, whitePin, pwmhz)) {
 			Logger.info("Blue");
 			led.setValues(0, 0, 1, 0);	// 0010
 			SleepUtil.sleepMillis(delay);
